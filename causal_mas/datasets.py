@@ -27,10 +27,11 @@ class Task:
     treat: str
     outcome: str
     covariates: list[str]
-    truth: float                     # experimental / randomized ground truth
-    units: str                       # "usd" or "prop"
+    truth: float | None = None       # experimental ground truth; None for user data
+    units: str = "raw"               # "usd" | "prop" | "raw"
     placebo_var: str | None = None
     is_rct_as_is: bool = True        # False when the estimation frame is constructed-observational
+    schema: list = field(default_factory=list)   # ColumnSpec list; empty -> use schema.py SCHEMAS[id]
     summary: dict = field(default_factory=dict)
 
 
@@ -113,3 +114,36 @@ def get_task(task_id: str) -> Task:
 
 def all_tasks() -> list[Task]:
     return [get_task(t) for t in _LOADERS]
+
+
+def build_task_from_df(df: pd.DataFrame, treatment: str, outcome: str,
+                       covariates: list[str], *, schema=None, units: str = "raw",
+                       name: str = "Your study", description: str = "",
+                       treatment_desc: str | None = None,
+                       outcome_desc: str | None = None) -> Task:
+    """Construct a Task from user-supplied data. No ground truth (truth=None).
+
+    Treatment is coerced to 0/1 (must have exactly two distinct values); only
+    numeric covariates are kept (the estimator and economist need numerics)."""
+    df = df.copy()
+
+    vals = sorted(pd.unique(df[treatment].dropna()))
+    if len(vals) != 2:
+        raise ValueError(
+            f"Treatment '{treatment}' must be binary (2 distinct values); "
+            f"found {len(vals)}: {vals[:6]}")
+    df[treatment] = (df[treatment] == vals[1]).astype(int)
+
+    df = df.dropna(subset=[treatment, outcome]).copy()
+    numeric = [c for c in covariates
+               if c not in (treatment, outcome)
+               and pd.api.types.is_numeric_dtype(df[c])]
+    df = df.dropna(subset=numeric) if numeric else df
+
+    return Task(
+        id="user", name=name, description=description or name,
+        treatment_desc=treatment_desc or f"{treatment} = {vals[1]}",
+        outcome_desc=outcome_desc or outcome,
+        df=df, treat=treatment, outcome=outcome, covariates=numeric,
+        truth=None, units=units, is_rct_as_is=False,
+        schema=schema or [], summary=_summary(df, treatment, outcome, numeric))

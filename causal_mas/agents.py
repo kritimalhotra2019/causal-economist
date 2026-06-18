@@ -108,14 +108,17 @@ def _apply_decisions(decisions, task, treat_col, out_col):
 # ---- nodes -----------------------------------------------------------------
 
 def economist_design(state, task, llm) -> dict[str, Any]:
-    schema = candidate_schema(task.id)
-    treat_col, out_col = TREATMENT_OUTCOME[task.id]
+    # benchmark tasks use the hardcoded schema; user tasks carry their own.
+    schema = task.schema or candidate_schema(task.id)
+    treat_col, out_col = task.treat, task.outcome
     estimand, identification, note = ("ATT",
                                       "selection-on-observables (unconfoundedness)",
                                       "credible only if treatment is unconfounded given these covariates")
 
     if llm.provider == "stub":
-        decisions = _oracle_decisions(task.id)
+        # the oracle only exists for benchmark tasks; for user data the stub
+        # falls back to adjusting for every supplied covariate (safety net below).
+        decisions = _oracle_decisions(task.id) if task.id in ANSWER_KEY else []
     else:
         decisions = []
         try:
@@ -285,7 +288,10 @@ def finalize(state, task) -> dict[str, Any]:
         f"  adjustment set: {', '.join(state['design']['confounders'])}",
         f"Estimate: {f(est)}   (estimand: {r.get('estimand')})",
         f"  95% CI: [{f(ci[0]) if ci else 'n/a'}, {f(ci[1]) if ci else 'n/a'}]" if ci else "",
-        f"Experimental truth: {f(truth)}   |error|: {f(err)}   CI covers truth: {covers}",
+        (f"Experimental truth: {f(truth)}   |error|: {f(err)}   CI covers truth: {covers}"
+         if truth is not None else
+         "No experimental ground truth (observational data) — judge credibility from "
+         "the diagnostics and the critic verdict, not against a known answer."),
         f"Critic verdict: {state['critic']['verdict']}",
         f"  {state['critic']['rationale']}",
     ]
