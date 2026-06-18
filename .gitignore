@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.sqlite
+.env
+eval/results.json
+eval/results_*.json
+eval/benchmark.png
+.streamlit/secrets.toml
+*.egg-info/
+.ipynb_checkpoints/

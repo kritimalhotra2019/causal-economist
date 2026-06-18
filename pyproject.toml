@@ -1,0 +1,20 @@
+[project]
+name = "causal-mas"
+version = "0.1.0"
+description = "A multi-agent, human-in-the-loop system for observational causal inference, with a pre-registered eval that can disprove its own value."
+requires-python = ">=3.10"
+dependencies = [
+    "numpy", "pandas", "scikit-learn", "statsmodels", "causaldata",
+    "langgraph>=1.0", "langgraph-checkpoint-sqlite",
+    "openai>=1.40", "anthropic>=0.39", "matplotlib", "python-dotenv",
+]
+
+[project.scripts]
+causal-mas = "causal_mas.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["causal_mas*", "eval*"]
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
