@@ -13,6 +13,7 @@ Deploy:        push to GitHub, deploy on share.streamlit.io, and set
 """
 from __future__ import annotations
 
+import hmac
 import os
 
 import pandas as pd
@@ -45,6 +46,30 @@ TASKS = {
 st.set_page_config(page_title="Causal MAS", page_icon="🧪", layout="wide")
 
 
+def check_password() -> None:
+    """Gate the app behind APP_PASSWORD (local .env / Streamlit Cloud Secrets).
+    Fail-closed: if no password is configured the app is locked, so a public
+    deploy can never run billed LLM calls without one."""
+    expected = os.environ.get("APP_PASSWORD")
+    if not expected:
+        st.title("🔒 Causal MAS")
+        st.error("This app isn't configured. Set **APP_PASSWORD** in the app's "
+                 "Secrets (or your local `.env`) to enable access.")
+        st.stop()
+    if st.session_state.get("auth_ok"):
+        return
+    st.title("🔒 Causal MAS")
+    with st.form("login"):
+        pw = st.text_input("Password", type="password")
+        if st.form_submit_button("Enter"):
+            if hmac.compare_digest(pw, expected):
+                st.session_state["auth_ok"] = True
+                st.rerun()
+            else:
+                st.error("Incorrect password.")
+    st.stop()
+
+
 def fmt(v, units: str) -> str:
     if v is None or (isinstance(v, float) and v != v):
         return "n/a"
@@ -71,6 +96,8 @@ def run_pipeline(task_id: str, provider: str):
 
 
 # ----------------------------------------------------------------- UI
+check_password()
+
 st.title("🧪 Causal Multi-Agent System")
 st.markdown(
     "A multi-agent, human-in-the-loop pipeline for **observational causal "
