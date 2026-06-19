@@ -7,6 +7,7 @@ dependencies = [
     "numpy", "pandas", "scikit-learn", "statsmodels", "causaldata",
     "langgraph>=1.0", "langgraph-checkpoint-sqlite",
     "openai>=1.40", "anthropic>=0.39", "matplotlib", "python-dotenv",
+    "streamlit", "pypdf", "python-docx",
 ]
 
 [project.scripts]

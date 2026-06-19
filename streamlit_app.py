@@ -40,8 +40,10 @@ from langgraph.types import Command
 
 from causal_mas.datasets import get_task, build_task_from_df
 from causal_mas.graph import build_graph
-from causal_mas.llm import make_llm, DEFAULT_ECONOMIST_MODEL, DEFAULT_CRITIC_MODEL
+from causal_mas.llm import (make_llm, DEFAULT_ECONOMIST_MODEL,
+                            DEFAULT_CRITIC_MODEL, DEFAULT_REVIEWER_MODEL)
 from causal_mas.planner import map_question
+from causal_mas.reviewer import extract_text, review_concept_note
 
 TASKS = {
     "lalonde": "LaLonde / NSW — job training → 1978 earnings (confounded observational)",
@@ -170,6 +172,65 @@ def render_results(task, state) -> None:
         st.dataframe(df, use_container_width=True, hide_index=True)
 
 
+def render_review(result: dict) -> None:
+    rev = result.get("review", {}) or {}
+    crit = result.get("critique", {}) or {}
+
+    st.subheader("Economist review")
+    st.markdown(f"**Study type:** {rev.get('study_type', '—')}")
+    if rev.get("summary"):
+        st.markdown(f"> {rev['summary']}")
+
+    ident = rev.get("identification", {}) or {}
+    if ident:
+        st.markdown("**Identification strategy**")
+        st.write(ident.get("strategy", "—"))
+        if ident.get("key_assumptions"):
+            st.markdown("_Key assumptions:_")
+            for a in ident["key_assumptions"]:
+                st.markdown(f"- {a}")
+        if ident.get("assessment"):
+            st.caption(ident["assessment"])
+
+    def _section(title, key, bullets=False):
+        val = rev.get(key)
+        if not val:
+            return
+        st.markdown(f"**{title}**")
+        if bullets and isinstance(val, list):
+            for x in val:
+                st.markdown(f"- {x}")
+        else:
+            st.write(val)
+
+    _section("Internal-validity threats", "internal_validity_threats", bullets=True)
+    _section("External validity", "external_validity")
+    _section("Power & sample size", "power_and_sample")
+    _section("Measurement & outcomes", "measurement")
+    _section("Cost-benefit analysis", "cost_benefit")
+    _section("Contribution to GDP — suggested method", "gdp_contribution")
+    _section("Ethics & feasibility", "ethics_feasibility")
+    _section("Strengths", "strengths", bullets=True)
+    _section("Recommendations", "recommendations", bullets=True)
+    if rev.get("overall"):
+        st.success(f"**Bottom line:** {rev['overall']}")
+
+    if crit:
+        st.subheader("Critic — independent red-team")
+        if crit.get("most_important_issue"):
+            st.warning(f"**Most important issue:** {crit['most_important_issue']}")
+        if crit.get("missed"):
+            st.markdown("**The review missed:**")
+            for x in crit["missed"]:
+                st.markdown(f"- {x}")
+        if crit.get("overstated"):
+            st.markdown("**The review overstated:**")
+            for x in crit["overstated"]:
+                st.markdown(f"- {x}")
+        if crit.get("verdict"):
+            st.caption(f"Critic verdict: {crit['verdict']}")
+
+
 # ----------------------------------------------------------------- UI
 check_password()
 
@@ -180,7 +241,8 @@ st.markdown(
     "runs a doubly-robust estimator with overlap/balance/placebo diagnostics "
     "(no LLM — *facts are settled by numbers*), and the **critic** judges it.")
 
-mode = st.sidebar.radio("Mode", ["Benchmark study", "Your data — ask a question"])
+mode = st.sidebar.radio("Mode", ["Benchmark study", "Your data — ask a question",
+                                 "Review a concept note"])
 
 # ============================================================ benchmark mode
 if mode == "Benchmark study":
@@ -208,7 +270,7 @@ if mode == "Benchmark study":
     render_results(task, state)
 
 # ============================================================ your-data mode
-else:
+elif mode == "Your data — ask a question":
     st.subheader("Ask a causal question of your own data")
     if not os.environ.get("NEBIUS_API_KEY"):
         st.warning("Your-data mode needs **NEBIUS_API_KEY** — it uses the LLM to "
@@ -277,3 +339,41 @@ else:
                 st.error(f"Run failed: {type(e).__name__}: {e}")
                 st.stop()
         render_results(task, state)
+
+# ========================================================= concept-note review
+else:
+    st.subheader("Review an impact-evaluation / causal-inference concept note")
+    st.caption("Upload a concept note (RCT, quasi-experimental, observational, or "
+               "cost-benefit). The economist reviews the design and economic "
+               "reasoning; the critic red-teams the review.")
+    if not os.environ.get("NEBIUS_API_KEY"):
+        st.warning("Review mode needs **NEBIUS_API_KEY** (it uses the LLM reviewers).")
+        st.stop()
+
+    up = st.file_uploader("Upload a concept note", type=["pdf", "docx", "txt", "md"])
+    if up is None:
+        st.info("Upload a .pdf / .docx / .txt / .md concept note to review.")
+        st.stop()
+    try:
+        text = extract_text(up.name, up.getvalue())
+    except Exception as e:
+        st.error(f"Couldn't read the document: {e}")
+        st.stop()
+    st.caption(f"Extracted {len(text):,} characters from **{up.name}**.")
+    if len(text.strip()) < 200:
+        st.warning("Very little text extracted — if this is a scanned PDF, the "
+                   "review will be thin (no text layer to read).")
+    with st.expander("Extracted text preview"):
+        st.text(text[:3000] + ("…" if len(text) > 3000 else ""))
+
+    if st.button("Review", type="primary"):
+        with st.spinner(f"Reviewer ({DEFAULT_REVIEWER_MODEL}) reviewing, "
+                        f"critic ({DEFAULT_CRITIC_MODEL}) red-teaming…"):
+            try:
+                result = review_concept_note(
+                    make_llm("nebius", role="reviewer"),
+                    make_llm("nebius", role="critic"), text)
+            except Exception as e:
+                st.error(f"Review failed: {type(e).__name__}: {e}")
+                st.stop()
+        render_review(result)

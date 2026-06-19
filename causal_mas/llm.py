@@ -17,8 +17,9 @@ import os
 from typing import Any
 
 NEBIUS_BASE_URL = "https://api.tokenfactory.nebius.com/v1/"
-DEFAULT_ECONOMIST_MODEL = "deepseek-ai/DeepSeek-V4-Pro"
-DEFAULT_CRITIC_MODEL    = "nvidia/Nemotron-3-Ultra-550b-a55b"
+DEFAULT_ECONOMIST_MODEL = "deepseek-ai/DeepSeek-V4-Pro"   # quantitative data design (4/4)
+DEFAULT_CRITIC_MODEL    = "deepseek-ai/DeepSeek-V4-Pro"   # red-team / rationale
+DEFAULT_REVIEWER_MODEL  = "zai-org/GLM-5.2"               # qualitative concept-note review
 DEFAULT_NEBIUS_MODEL    = DEFAULT_ECONOMIST_MODEL   # single-model / verifier fallback
 
 
@@ -59,6 +60,7 @@ class NebiusLLM:
 ROLE_DEFAULTS = {
     "economist": DEFAULT_ECONOMIST_MODEL,
     "critic": DEFAULT_CRITIC_MODEL,
+    "reviewer": DEFAULT_REVIEWER_MODEL,
 }
 
 

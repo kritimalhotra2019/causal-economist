@@ -10,3 +10,5 @@ anthropic>=0.39
 matplotlib
 python-dotenv
 streamlit
+pypdf
+python-docx
